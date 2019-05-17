@@ -1061,19 +1061,23 @@ replace empstat_revised = . if empstat == 0
 gen union_revised = 1 if union >= 2
 replace union_revised = 0 if union < 2
 
-egen incwagemean_union = mean(incwage) if union_revised==1 & empstat_revised==1, by(year) 
-egen incwagemean = mean(incwage) if union_revised==0 & empstat_revised==1, by(year) 
+sort year
+by year: egen incwagemean_union = mean(incwage) if union_revised==1 & empstat_revised==1
 
-*Graph 01_Earned Income by Type of Worker
+sort year
+by year: egen incwagemean = mean(incwage) if union_revised==0 & empstat_revised==1
+
+/*Graph 01_Earned Income by Type of Worker
 twoway line incwagemean_union year, color("22 150 210") ytitle("Earned Income") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
 	ti("Earned Income by Type of Worker") legend(order(1 "Unionized Earned Income" ///
 	2 "Nonunionized Earned Income") position(6)) ///
 	|| line incwagemean year
+	*/
 
 *Look at earned income distribution between union vs. nonunion workers, winsorized (maybe conditionalize on employment)
 
-*Graph 02_Earned Income Density by Worker Type
+/*Graph 02_Earned Income Density by Worker Type
 twoway (hist incwage if union_revised==1 & incwage < 500000, color("22 150 210") width(10000) ///
 		xtitle("Earned Income") ytitle("Frequency") ti("Unionized Earned Income Density") ///
 		ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)) ///
@@ -1082,6 +1086,7 @@ twoway (hist incwage if union_revised==1 & incwage < 500000, color("22 150 210")
 		ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)), ///
 		legend(order(0 "Nonunionized Earned Income Density" 1 "Unionized Earned Income Density" ) ///
 		ti("Earned Income Density by Worker Type") position(6))
+		*/
 
 *Look at general union count decline over time, create union density variable
 sort statefip year
@@ -1094,18 +1099,18 @@ replace union_density = count_union/total_pop
 sort year
 by year: egen mean_union_density = mean(union_density)
 
-
-*Graph 03_Unionized Worker Count by Year
+/*Graph 03_Unionized Worker Count by Year
 twoway scatter unioncount year if year >= 2005, mcolor("22 150 210") ///
 	ytitle("Unionized Worker Count") xtitle("Year") ti("Unionized Worker Count by Year") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
+*/
 
-sort year
-twoway scatter mean_union_density year if year >= 2005, mcolor("22 150 210") ///
+/*twoway scatter mean_union_density year if year >= 2005, mcolor("22 150 210") ///
 	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
+*/
 
-**Now look at union membership in RTW vs non-RTW states and compare to nonunion states
+/*Now look at union membership in RTW vs non-RTW states and compare to nonunion states
 *Define dummy for RTW states
 # delimit ;
 gen RTW =
@@ -1115,7 +1120,6 @@ gen RTW =
 	statefip == 12 | 
 	statefip == 13 | 
 	statefip == 16 |
-	statefip == 18 | 
 	statefip == 19 | 
 	statefip == 20 |
 	statefip == 22 | 
@@ -1136,18 +1140,34 @@ gen RTW =
 	statefip == 56 
 ;
 # delimit cr
+*/
 
-*Compare mean wages for RTW, Non-RTW, and general mean earned income over time
+/*Compare mean wages for RTW, Non-RTW, and general mean earned income over time
 egen incwagemean_rtw = mean(incwage) if (union_revised==1 & RTW==1) | (union_revised==0 & RTW==1), by(year) 
 egen incwagemean_nonrtw = mean(incwage) if (union_revised==1 & RTW==0) | (union_revised==0 & RTW==0), by(year) 
+*/
 
-*Graph 04_Earned Income by Type of State
+/*Graph 04_Earned Income by Type of State
 twoway line incwagemean_nonrtw year if RTW==0, color("22 150 210") ytitle("Average Earned Income") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
 	ti("Earned Income by Type of State") legend(order(0 "Non-Right to Work States" ///
 	1 "Right to Work States") position(6)) || line incwagemean_rtw year if RTW==1
-	
-*Set up single state Event Study, Indiana
+*/
+
+//Treat=IN(18); Control=AK, CA, CO, CT, DE, IL, KY, MA, MD, ME, MN, MO, MT, NH, NJ, NM, NY, OH
+//OR, PA, RI, VT, WA, WI, WV
+
+gen treat = .
+
+foreach i in 02 06 08 09 10 11 17 21 23 24 25 27 28 30 33 34 35 36 39 41 42 44 50 53 54 55 {
+	replace treat = 0 if statefip == `i'
+	}
+
+//Set up single state Event Study, Indiana
+*Define Indiana(18) as the Treatment
+replace treat = 1 if statefip==18
+
+*define time in relation to 2012, when Indiana passed RTW
 gen time = .
 replace time = year-2012
 
@@ -1155,19 +1175,17 @@ replace time = year-2012
 replace time = time + 6
 replace time = . if time < 0
 
-*Generate event window
+/*Generate event window
 gen event_window = 1
 replace event_window = 0 if time <= 0
 replace event_window = 0 if time > 10
+*/
 
-//Create T and C Groups for Midwest
-gen treat = 1 if statefip == 18
-replace treat = 0 if statefip == 27 | statefip == 17 | statefip == 29
-
+//Look at log wage differences between Indiana and Control States that never implemented RTW 
 gen lnincwage = ln(incwage)
 
 //Check union density within states that implement Right to Work. Looks like there are preexisting downward trends in all three treatment states.
-*Union density by year for Indiana
+/*Union density by year for Indiana
 twoway scatter union_density year if statefip==18 & year >= 2005, mcolor("22 150 210") ///
 	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
@@ -1180,7 +1198,31 @@ twoway scatter union_density year if statefip==26 & year >= 2005, mcolor("22 150
 *Union density by year for Wisconsin
 twoway scatter union_density year if statefip==55 & year >= 2005, mcolor("22 150 210") ///
 	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
-	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)*/
+	
+**Union density by year for Indiana vs C groups
+sort year
+by year: egen mean_union_density_indiana = mean(union_density) if treat==1
+
+sort year
+by year: egen mean_union_density_control = mean(union_density) if treat==0
+
+twoway line mean_union_density_indiana year if treat==1, color("22 150 210") ytitle("Union Density") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
+	ti("Union density by year") legend(order(0 "Control States" ///
+	1 "Indiana") position(6)) || line mean_union_density_control year if treat==0
+	
+*Log wages by year for Indiana vs C groups
+sort year
+by year: egen lnincwage_indiana = mean(lnincwage) if treat==1
+
+sort year
+by year: egen lnincwage_control = mean(lnincwage) if treat==0
+
+twoway line lnincwage_indiana year if treat==1, color("22 150 210") ytitle("Average Log Earned Income") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
+	ti("Log Earned Income by Group Type") legend(order(0 "Control States" ///
+	1 "Indiana") position(6)) || line lnincwage_control year if treat==0
 
 //Regression
 *(1) Naive regression for union vs. nonunion wages, illustrating level difference of Figure 1.
@@ -1189,15 +1231,47 @@ reg lnincwage union_revised
 *(2) Now with year, state, age FE, clustered by state to account for correlation across dataset, effectively the same as Specification 1
 reg lnincwage union_revised i.year i.statefip
 
-*Re: Union Density Regresion
+**Re: Union Density Regresion
 reg union_density i.treat##b5.time i.sex i.race empstat [pweight=earnwt]
 margins treat, at(time=(1(1)12))
 marginsplot
 
-*Re: ln(wages) Now conduct DiD for union members in ALL T states vs. C states defined earlier
+**simple graph
+preserve
+
+drop if treat==.
+
+collapse (mean) union_density, by (treat year)
+
+reshape wide union_density, i(year) j(treat)
+
+graph twoway line union_density0 union_density1 year, sort color("22 150 210") ytitle("Union Density") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
+	ti("Union Density, Indiana vs. Controls") legend(order(0 "Control States" ///
+	1 "Indiana") position(6))
+
+restore
+
+**Re: ln(wages) regression
+*Now conduct DiD for union members in ALL T states vs. C states defined earlier
 reg lnincwage i.treat##b5.time i.sex i.race empstat i.age [pweight=earnwt]
 margins treat, at(time=(1(1)12))
 marginsplot
+
+preserve
+
+drop if treat==.
+
+collapse (mean) incwage, by (treat year)
+
+reshape wide incwage, i(year) j(treat)
+
+graph twoway line incwage0 incwage1 year, sort color("22 150 210") ytitle("Earned Income") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
+	ti("Earned Income, Indiana vs. Controls") legend(order(0 "Control States" ///
+	1 "Indiana") position(6))
+
+restore
 
 **Look up how to restart stata from certain point, potentially in IPA training
 **Look up predict graphs
@@ -1267,11 +1341,13 @@ replace treatm = 0 if statefip == 27 | statefip == 17 | statefip == 29
 *Create T vs C for all groups
 gen treat = 1 if statefip == 18 | statefip == 26 | statefip == 55
 replace treat = 0 if statefip == 27 | statefip == 17 | statefip == 29
+*/
 
 //Naive regressions
 *Generage ln(wage)
 gen lnincwage = ln(incwage)
 
+/*
 reg lnincwage union_revised
 
 *Now with year, state, age FE, clustered by state to account for correlation across dataset
@@ -1290,7 +1366,6 @@ reg lnincwage b2012.year##i.treat##i.union_revised i.age i.sex i.race empstat [p
 
 **Re: Union Count: Now conduct event study DiD for union members in all T states vs. C states (need to add education)
 reg lnincwage b2012.year##i.treat##i.union_revised i.age i.sex i.race empstat [pweight=earnwt]
-
 
 //Review
 * placebo
@@ -1311,6 +1386,27 @@ replace event_t = 0 if t_mich < 1 & t_mich >= -11 & statefip == 26
 replace event_t = 1 if t_wisc >= 1 & t_wisc <= 4 & statefip == 55
 replace event_t = 0 if t_wisc < 1 & t_wisc >= -11 & statefip == 55
 
+# delimit ;
+replace treat = 0 if
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	statefip == 27 |
+	;
+# delimit cr 
 
 */
 
