@@ -17,6 +17,7 @@ ssc install blindschemes, replace all
 set scheme plotplain, permanently
 ssc install pshare
 ssc install synth
+ssc install outreg2
 
 pause on
 
@@ -1050,34 +1051,72 @@ su incwage if union == 0
 
 tab statefip if year == 2007
 
-*Create employed dummy
+// Create variables for future graphs and regressions
+**Create updated employed dummy
 gen empstat_revised = empstat == 10
 replace empstat_revised = 0 if empstat != 10 & empstat !=0
 replace empstat_revised = . if empstat == 0 
 
-//Summary graphs
-*General graph showing union wages higher in levels and rates than nonunion wages
-
+**Create updated union dummy
 gen union_revised = 1 if union >= 2
 replace union_revised = 0 if union < 2
 
+**Create RTW dummy
+gen rtw = .
+
+foreach i in 01 04 05 12 13 16 19 20 22 26 28 31 37 38 40 45 46 47 48 49 51 54 55 56{
+	replace rtw = 1 if statefip == `i'
+	}
+
+**Income
+*Create log earned income
+gen lnincwage = ln(incwage)
+
+**Update sex variable
+replace sex = 0 if sex == 2
+
+*Create mean earned income variable by year
 sort year
 by year: egen incwagemean_union = mean(incwage) if union_revised==1 & empstat_revised==1
 
 sort year
 by year: egen incwagemean = mean(incwage) if union_revised==0 & empstat_revised==1
 
+*Create mean earned income by year and union type
+egen incwagemean_rtw = mean(incwage) if (union_revised==1 & rtw==1) | (union_revised==0 & rtw==1), by(year) 
+egen incwagemean_nonrtw = mean(incwage) if (union_revised==1 & rtw==0) | (union_revised==0 & rtw==0), by(year) 
+
+**Union Density
+*Create union density variable
+sort statefip year
+by statefip year: egen count_union=count(union_revised) if union_revised==1
+by statefip year: egen total_pop=count(_N)
+
+gen union_density = .
+replace union_density = count_union/total_pop
+
+*Create mean union density variable by year
+sort year
+by year: egen mean_union_density = mean(union_density)
+
+**Create Treat=IN(18); Control=AK, CA, CO, CT, DC, DE, IL, KY, MA, MD, ME, MN, MO, 
+** MT, NH, NJ, NM, NY, OH, OR, PA, RI, VT, WA, WI, WV
+
+gen treat = .
+
+foreach i in 02 06 08 09 10 11 17 21 23 24 25 27 28 30 33 34 35 36 39 41 42 44 50 53 54 55 {
+	replace treat = 0 if statefip == `i'
+	}
+
+//Summary graphs
 /*Graph 01_Earned Income by Type of Worker
 twoway line incwagemean_union year, color("22 150 210") ytitle("Earned Income") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
 	ti("Earned Income by Type of Worker") legend(order(1 "Unionized Earned Income" ///
 	2 "Nonunionized Earned Income") position(6)) ///
 	|| line incwagemean year
-	*/
 
-*Look at earned income distribution between union vs. nonunion workers, winsorized (maybe conditionalize on employment)
-
-/*Graph 02_Earned Income Density by Worker Type
+Graph 02_Earned Income Density by Worker Type
 twoway (hist incwage if union_revised==1 & incwage < 500000, color("22 150 210") width(10000) ///
 		xtitle("Earned Income") ytitle("Frequency") ti("Unionized Earned Income Density") ///
 		ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)) ///
@@ -1086,84 +1125,255 @@ twoway (hist incwage if union_revised==1 & incwage < 500000, color("22 150 210")
 		ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)), ///
 		legend(order(0 "Nonunionized Earned Income Density" 1 "Unionized Earned Income Density" ) ///
 		ti("Earned Income Density by Worker Type") position(6))
-		*/
-
-*Look at general union count decline over time, create union density variable
-sort statefip year
-by statefip year: egen count_union=count(union_revised) if union_revised==1
-by statefip year: egen total_pop=count(_N)
-
-gen union_density = .
-replace union_density = count_union/total_pop
-
-sort year
-by year: egen mean_union_density = mean(union_density)
-
-/*Graph 03_Unionized Worker Count by Year
+	
+Graph 03_Unionized Worker Count by Year
 twoway scatter unioncount year if year >= 2005, mcolor("22 150 210") ///
 	ytitle("Unionized Worker Count") xtitle("Year") ti("Unionized Worker Count by Year") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
-*/
 
-/*twoway scatter mean_union_density year if year >= 2005, mcolor("22 150 210") ///
-	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
-	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
-*/
-
-/*Now look at union membership in RTW vs non-RTW states and compare to nonunion states
-*Define dummy for RTW states
-# delimit ;
-gen RTW =
-	statefip == 01 |
-	statefip == 04 |
-	statefip == 05 |
-	statefip == 12 | 
-	statefip == 13 | 
-	statefip == 16 |
-	statefip == 19 | 
-	statefip == 20 |
-	statefip == 22 | 
-	statefip == 26 | 
-	statefip == 28 | 
-	statefip == 31 |
-	statefip == 37 | 
-	statefip == 38 | 
-	statefip == 40 | 
-	statefip == 45 |
-	statefip == 46 | 
-	statefip == 47 | 
-	statefip == 48 |
-	statefip == 49 | 
-	statefip == 51 |
-	statefip == 54 |
-	statefip == 55 | 
-	statefip == 56 
-;
-# delimit cr
-*/
-
-/*Compare mean wages for RTW, Non-RTW, and general mean earned income over time
-egen incwagemean_rtw = mean(incwage) if (union_revised==1 & RTW==1) | (union_revised==0 & RTW==1), by(year) 
-egen incwagemean_nonrtw = mean(incwage) if (union_revised==1 & RTW==0) | (union_revised==0 & RTW==0), by(year) 
-*/
-
-/*Graph 04_Earned Income by Type of State
+Graph 04_Earned Income by Type of State
 twoway line incwagemean_nonrtw year if RTW==0, color("22 150 210") ytitle("Average Earned Income") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
 	ti("Earned Income by Type of State") legend(order(0 "Non-Right to Work States" ///
 	1 "Right to Work States") position(6)) || line incwagemean_rtw year if RTW==1
-*/
+	
+Graph 05_Union Densityby Year
+twoway scatter mean_union_density year if year >= 2005, mcolor("22 150 210") ///
+	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
 
-//Treat=IN(18); Control=AK, CA, CO, CT, DE, IL, KY, MA, MD, ME, MN, MO, MT, NH, NJ, NM, NY, OH
-//OR, PA, RI, VT, WA, WI, WV
+Graph XYZ Check union density within states that implement Right to Work. Looks 
+//like there are preexisting downward trends in all three treatment states.
 
-gen treat = .
+Graph X Union density by year for Indiana
+twoway scatter union_density year if statefip==18 & year >= 2005, mcolor("22 150 210") ///
+	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
+	
+Graph Y Union density by year for Michigan
+twoway scatter union_density year if statefip==26 & year >= 2005, mcolor("22 150 210") ///
+	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
+	
+Graph Z Union density by year for Wisconsin
+twoway scatter union_density year if statefip==55 & year >= 2005, mcolor("22 150 210") ///
+	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)*/
 
-foreach i in 02 06 08 09 10 11 17 21 23 24 25 27 28 30 33 34 35 36 39 41 42 44 50 53 54 55 {
-	replace treat = 0 if statefip == `i'
+compress
+	
+save "C:\Users\Chris\Documents\Princeton\WWS Spring 2019\Economic Causes and Conesequences of Inequality\Research Paper\Stata\CPS_001_Staging.dta", replace
+
+********************
+*Summary Statistics*
+********************
+
+tab2 incwage sex, by(rtw)
+
+************************
+*Measures of Inequality*	
+************************
+use "CPS_001_Staging.dta", replace
+
+*Income share
+gen wage_p_10 = .
+gen wage_p_50 = .
+gen wage_p_90 = .
+
+
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2000, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2000
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2000
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2000
 	}
 
-//Set up single state Event Study, Indiana
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2001, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2001
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2001
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2001
+	}
+
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2002, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2002
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2002
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2002
+	}
+
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2003, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2003
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2003
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2003
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2004, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2004
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2004
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2004
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2005, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2005
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2005
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2005
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2006, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2006
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2006
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2006
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2007, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2007
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2007
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2007
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2008, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2008
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2008
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2008
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2009, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2009
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2009
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2009
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2010, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2010
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2010
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2010
+	}
+
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2011, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2011
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2011
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2011
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2012, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2012
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2012
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2012
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2013, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2013
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2013
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2013
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2014, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2014
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2014
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2014
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2015, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2015
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2015
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2015
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2016, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2016
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2016
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2016
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2017, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2017
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2017
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2017
+	}
+	
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	_pctile incwage [pw=asecwt] if incwage > 0 & statefip ==`i' & year==2018, percentiles(10 50 90)
+	replace wage_p_10 = `r(r1)' if statefip == `i' & year == 2018
+	replace wage_p_50 = `r(r2)' if statefip == `i' & year == 2018
+	replace wage_p_90 = `r(r3)' if statefip == `i' & year == 2018
+	}
+
+save "C:\Users\Chris\Documents\Princeton\WWS Spring 2019\Economic Causes and Conesequences of Inequality\Research Paper\Stata\CPS_001_Staging_ratios2.dta", replace
+
+*50-10 ratios by year and state
+use "CPS_001_Staging_ratios.dta", clear
+
+gen ratio_50_10 = .
+
+gen ratio_90_10 = .
+
+sort year statefip
+by year statefip: pshare estimate incwage, p(90 50 10)
+
+
+*90-10 ratios by year and state
+
+
+******************************************
+*Indiana, Set up single state Event Study*
+******************************************
+use "CPS_001_Staging.dta", clear
+
+//Create variables
 *Define Indiana(18) as the Treatment
 replace treat = 1 if statefip==18
 
@@ -1172,60 +1382,196 @@ gen time = .
 replace time = year-2012
 
 *Becaues negative factor vars cause problems when running regressions; t=0 is now t=6
-replace time = time + 6
-replace time = . if time < 0
+*gen time2 = time + 6
+*gen time2 = . if time < 0
 
-/*Generate event window
-gen event_window = 1
-replace event_window = 0 if time <= 0
-replace event_window = 0 if time > 10
-*/
+*Generate event window
+gen window = 1
+replace window = 0 if time < -6
+replace window = 0 if time > 4
 
-//Look at log wage differences between Indiana and Control States that never implemented RTW 
-gen lnincwage = ln(incwage)
-
-//Check union density within states that implement Right to Work. Looks like there are preexisting downward trends in all three treatment states.
-/*Union density by year for Indiana
-twoway scatter union_density year if statefip==18 & year >= 2005, mcolor("22 150 210") ///
-	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
-	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
-	
-*Union density by year for Michigan
-twoway scatter union_density year if statefip==26 & year >= 2005, mcolor("22 150 210") ///
-	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
-	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)
-	
-*Union density by year for Wisconsin
-twoway scatter union_density year if statefip==55 & year >= 2005, mcolor("22 150 210") ///
-	ytitle("Unionized Worker Density") xtitle("Year") ti("Unionized Worker Density by Year") ///
-	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid)*/
-	
-**Union density by year for Indiana vs C groups
+*Create union density by year for Indiana vs C groups
 sort year
 by year: egen mean_union_density_indiana = mean(union_density) if treat==1
 
 sort year
 by year: egen mean_union_density_control = mean(union_density) if treat==0
 
-twoway line mean_union_density_indiana year if treat==1, color("22 150 210") ytitle("Union Density") ///
-	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
-	ti("Union density by year") legend(order(0 "Control States" ///
-	1 "Indiana") position(6)) || line mean_union_density_control year if treat==0
-	
-*Log wages by year for Indiana vs C groups
+*Create log wages by year for Indiana vs C groups
 sort year
 by year: egen lnincwage_indiana = mean(lnincwage) if treat==1
 
 sort year
 by year: egen lnincwage_control = mean(lnincwage) if treat==0
 
+save "C:\Users\Chris\Documents\Princeton\WWS Spring 2019\Economic Causes and Conesequences of Inequality\Research Paper\Stata\CPS_001_Staging_Indiana.dta", replace
+
+//Graphs
+**Union Density, Indiana vs. Control States
+use "CPS_001_Staging_Indiana.dta", clear
+
+drop if treat==.
+drop if window==0
+
+collapse (mean) union_density, by (treat time)
+
+reshape wide union_density, i(time) j(treat)
+
+graph twoway (line union_density0 time, sort lpattern(dash) color(gray)) ///
+	(line union_density1 time, sort lpattern(solid) lcolor("22 150 210") ytitle("Union Density") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(-6(1)4,nogrid) xtitle("Year") ///
+	ti("Union Density, Indiana vs. Controls") legend(order(1 "Control States" ///
+	2 "Indiana") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin)))
+
+pause
+
+**Mean Earned Income Indiana vs. Control States
+use "CPS_001_Staging_Indiana.dta", clear
+
+drop if treat==.
+drop if window==0
+
+collapse (mean) incwage, by (treat time)
+
+reshape wide incwage, i(time) j(treat)
+
+graph twoway (line incwage0 time, sort lpattern(dash) color(gray)) ///
+	(line incwage1 time, sort lpattern(solid) lcolor("22 150 210") ytitle("Earned Income") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(-6(1)4,nogrid) xtitle("Year") ///
+	ti("Earned Income, Indiana vs. Controls") legend(order(1 "Control States" ///
+	2 "Indiana") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin)))
+
+//Regressions
+/*(1) Naive regression for union vs. nonunion wages, illustrating level difference of Figure 1.
+reg lnincwage union_revised
+
+*(2) Now with year, state, age FE, clustered by state to account for correlation across dataset, effectively the same as Specification 1
+reg lnincwage union_revised i.year i.statefip
+
+*/
+
+**Re: Union Density Regresion
+reg union_density i.treat##b2011.year i.sex i.race empstat [pweight=earnwt]
+*margins treat, at(time=(1(1)12))
+*marginsplot
+
+
+**Re: ln(wages) regression
+*Now conduct DiD for union members in ALL T states vs. C states defined earlier
+reg lnincwage i.treat##b5.time i.sex i.race empstat i.age [pweight=earnwt]
+reg incwage i.treat##b2011.year i.sex i.race empstat i.age [pweight=earnwt] if union_revised==1
+reg incwage i.treat##b2011.year i.sex i.race empstat i.age [pweight=earnwt] if union_revised==0
+
+*margins treat, at(time=(1(1)12))
+*marginsplot
+
+
+//Graphs
+**Union Density by Year, Indiana vs. Control States
+/*twoway line mean_union_density_indiana year if treat==1, color("22 150 210") ytitle("Union Density") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
+	ti("Union density by year") legend(order(0 "Control States" ///
+	1 "Indiana") position(6)) || line mean_union_density_control year if treat==0
+
+**Union mean log earned income, Indiana vs. Control States
 twoway line lnincwage_indiana year if treat==1, color("22 150 210") ytitle("Average Log Earned Income") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
 	ti("Log Earned Income by Group Type") legend(order(0 "Control States" ///
 	1 "Indiana") position(6)) || line lnincwage_control year if treat==0
+*/
+
+*******************************************
+*Michigan, Set up single state Event Study*
+*******************************************
+use "CPS_001_Staging.dta", clear
+
+//Create variables
+*Define Indiana(18) as the Treatment
+replace treat = 1 if statefip==26
+
+*define time in relation to 2012, when Indiana passed RTW
+gen time = .
+replace time = year-2013
+
+*Becaues negative factor vars cause problems when running regressions; t=0 is now t=6
+*replace time = time + 6
+*replace time = . if time < 0
+
+*Generate event window
+gen window = 1
+replace window = 0 if time < -6
+replace window = 0 if time > 4
+
+*Create union density by year for Michigan vs C groups
+sort year
+by year: egen mean_union_density_michigan = mean(union_density) if treat==1
+
+sort year
+by year: egen mean_union_density_control = mean(union_density) if treat==0
+
+*Create log wages by year for Michigan vs C groups
+sort year
+by year: egen lnincwage_michigan = mean(lnincwage) if treat==1
+
+sort year
+by year: egen lnincwage_control = mean(lnincwage) if treat==0
+
+save "C:\Users\Chris\Documents\Princeton\WWS Spring 2019\Economic Causes and Conesequences of Inequality\Research Paper\Stata\CPS_001_Staging_Michigan.dta", replace
+
+//Graphs
+**Union Density, Michigan vs. Control States
+use "CPS_001_Staging_Michigan.dta", clear
+
+drop if treat == .
+drop if window == 0
+
+collapse (mean) union_density, by (treat time)
+
+reshape wide union_density, i(time) j(treat)
+
+graph twoway (line union_density0 time, sort lpattern(dash) color(gray)) ///
+	(line union_density1 time, sort lpattern(solid) lcolor("22 150 210") ytitle("Union Density") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(-6(1)4,nogrid) xtitle("Year") ///
+	ti("Union Density, Michigan vs. Controls") legend(order(1 "Control States" ///
+	2 "Michigan") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin)))
+
+**Earned Income, Michigan vs. Control States
+use "CPS_001_Staging_Michigan.dta", clear
+
+drop if treat==.
+drop if window==0
+
+collapse (mean) incwage, by (treat time)
+
+reshape wide incwage, i(time) j(treat)
+
+graph twoway (line incwage0 time, sort lpattern(dash) color(gray)) ///
+	(line incwage1 time, sort lpattern(solid) lcolor("22 150 210") ytitle("Earned Income") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(-6(1)4,nogrid) xtitle("Year") ///
+	ti("Earned Income, Michigan vs. Controls") legend(order(1 "Control States" ///
+	2 "Michigan") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin)))
+	
+**Earned Income, Michigan vs. Control States
+use "CPS_001_Staging_Michigan.dta", clear
+
+drop if treat==.
+drop if window==0
+
+collapse (mean) lnincwage, by (treat time)
+
+reshape wide lnincwage, i(time) j(treat)
+
+graph twoway (line lnincwage0 time, sort lpattern(dash) color(gray)) ///
+	(line lnincwage1 time, sort lpattern(solid) lcolor("22 150 210") ytitle("Log Earned Income") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(-6(1)4,nogrid) xtitle("Year") ///
+	ti("Log Earned Income, Michigan vs. Controls") legend(order(1 "Control States" ///
+	2 "Michigan") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin)))
+	
+pause
+
 
 //Regression
-*(1) Naive regression for union vs. nonunion wages, illustrating level difference of Figure 1.
+/*(1) Naive regression for union vs. nonunion wages, illustrating level difference of Figure 1.
 reg lnincwage union_revised
 
 *(2) Now with year, state, age FE, clustered by state to account for correlation across dataset, effectively the same as Specification 1
@@ -1235,43 +1581,245 @@ reg lnincwage union_revised i.year i.statefip
 reg union_density i.treat##b5.time i.sex i.race empstat [pweight=earnwt]
 margins treat, at(time=(1(1)12))
 marginsplot
-
-**simple graph
-preserve
-
-drop if treat==.
-
-collapse (mean) union_density, by (treat year)
-
-reshape wide union_density, i(year) j(treat)
-
-graph twoway line union_density0 union_density1 year, sort color("22 150 210") ytitle("Union Density") ///
-	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
-	ti("Union Density, Indiana vs. Controls") legend(order(0 "Control States" ///
-	1 "Indiana") position(6))
-
-restore
-
+*/
 **Re: ln(wages) regression
 *Now conduct DiD for union members in ALL T states vs. C states defined earlier
-reg lnincwage i.treat##b5.time i.sex i.race empstat i.age [pweight=earnwt]
-margins treat, at(time=(1(1)12))
-marginsplot
+reg incwage i.treat##b2012.year i.sex i.race empstat i.age [pweight=earnwt] if union_revised==1
+reg incwage i.treat##b2012.year i.sex i.race empstat i.age [pweight=earnwt] if union_revised==0
 
-preserve
+estimates store michigan_lnincwage_time_reg
 
-drop if treat==.
+coefplot michigan_lnincwage_time_reg, vertical keep(*.year)
 
-collapse (mean) incwage, by (treat year)
 
-reshape wide incwage, i(year) j(treat)
-
-graph twoway line incwage0 incwage1 year, sort color("22 150 210") ytitle("Earned Income") ///
+//Graphs
+**Union Density by Year, Michigan vs. Control States
+/*twoway line mean_union_density_michigan year if treat==1, color("22 150 210") ytitle("Union Density") ///
 	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
-	ti("Earned Income, Indiana vs. Controls") legend(order(0 "Control States" ///
-	1 "Indiana") position(6))
+	ti("Union density by year") legend(order(0 "Control States" ///
+	1 "Indiana") position(6)) || line mean_union_density_control year if treat==0
 
-restore
+**Union mean log earned income, Michigan vs. Control States
+twoway line lnincwage_michigan year if treat==1, color("22 150 210") ytitle("Average Log Earned Income") ///
+	ylabel(, labsize(vsmall) nogrid) xlab(,nogrid) xtitle("Year") ///
+	ti("Log Earned Income by Group Type") legend(order(0 "Control States" ///
+	1 "michigan") position(6)) || line lnincwage_control year if treat==0
+*/
+
+********************
+*Synthetic Controls*
+********************
+use "CPS_001_Staging.dta", clear
+
+//Choose variables with greatest predictive power for union density
+pwcorr union_density statefip county ownershp hhincome age sex race occ ind classwkr educ
+
+*I need to condense statefip into essentially an id variable.
+collapse (mean) union_density ind occ county race educ classwkr, by (statefip year)
+
+replace union_density=0 if union_density==.
+
+*Establish j(state) t(year)
+tsset statefip year
+
+save "C:\Users\Chris\Documents\Princeton\WWS Spring 2019\Economic Causes and Conesequences of Inequality\Research Paper\Stata\CPS_001_Staging_Synthetic.dta", replace
+
+//Run synthetic control for Union Density
+use "CPS_001_Staging_Synthetic.dta", clear
+*Graph Decomposed Indiana
+synth union_density ind occ educ classwkr union_density(2000) union_density(2005) union_density(2011), trunit(18) trperiod(2012) xperiod(2000(1)2012) figure
+
+synth_runner union_density ind occ educ classwkr union_density(2000) union_density(2005) union_density(2012), trunit(26) trperiod(2013) gen_vars keep(CPS_001_Synth_Runner_Indiana)
+
+*Graph Decomposed Michigan
+synth union_density ind occ educ classwkr union_density(2000) union_density(2005) union_density(2012), trunit(26) trperiod(2013) xperiod(2000(1)2013) figure
+
+synth_runner union_density ind occ educ classwkr union_density(2000) union_density(2005) union_density(2012), trunit(26) trperiod(2013) gen_vars keep(CPS_001_Synth_Runner_Michigan)
+
+**Graph decomposed effect on Michigan
+use "CPS_001_Synth_Runner_Indiana.dta", clear
+
+**Graph Difference in Synthetic and Actual Union Density for Indiana and 26 Other Placebo States
+twoway  (line effect lead if statefip==02, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==06, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==08, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==09, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==10, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==11, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==17, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==21, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==23, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==24, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==25, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==27, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==28, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==30, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==33, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==34, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==35, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==36, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==39, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==41, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==42, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==44, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==50, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==53, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==54, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==55, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==18, lpattern(solid) lcolor("22 150 210")), ytitle("Union Density") ///
+		ylabel(, labsize(vsmall) nogrid) xlab(-12(1)6,nogrid) xtitle("Time") ///
+		ti("Difference in Synthetic and Actual Union Density for Indiana and 26 Placebo States") legend(order(27 "Indiana" ///
+		2 "Donor Pool") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin))
+		
+**Graph Difference in Synthetic and Actual Union Density for Michigan and 26 Other Placebo States
+use "CPS_001_Synth_Runner_Michigan.dta", clear
+
+twoway  (line effect lead if statefip==02, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==06, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==08, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==09, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==10, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==11, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==17, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==21, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==23, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==24, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==25, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==27, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==28, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==30, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==33, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==34, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==35, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==36, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==39, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==41, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==42, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==44, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==50, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==53, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==54, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==55, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==26, lpattern(solid) lcolor("22 150 210")), ytitle("Union Density") ///
+		ylabel(, labsize(vsmall) nogrid) xlab(-12(1)6,nogrid) xtitle("Time") ///
+		ti("Difference in Synthetic and Actual Union Density for Michigan and 26 Placebo States") legend(order(27 "Michigan" ///
+		2 "Donor Pool") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin))
+
+
+		
+		
+		
+***********
+*   END   *
+***********
+
+
+************
+/*		
+//Choose variables with greatest predictive power for earned income
+use "CPS_001_Staging.dta", clear
+
+
+pwcorr incwage statefip county ownershp hhincome age sex race occ ind classwkr educ
+
+reg lnincwage ind occ educ classwkr age health wkstat
+
+*I need to condense statefip into essentially an id variable.
+collapse (mean) lnincwage ind occ educ classwkr age health wkstat, by (statefip year)
+
+replace lnincwage=0 if lnincwage==.
+
+*Establish j(state) t(year)
+tsset statefip year
+
+save "C:\Users\Chris\Documents\Princeton\WWS Spring 2019\Economic Causes and Conesequences of Inequality\Research Paper\Stata\CPS_001_Staging_Synthetic_Earned Income.dta", replace
+
+//Run synthetic control for Union Density
+use "CPS_001_Staging_Synthetic_Earned Income.dta", clear
+
+*Graph Decomposed Indiana
+synth lnincwage ind occ educ classwkr age health wkstat lnincwage(2000) lnincwage(2005) lnincwage(2011), trunit(18) trperiod(2012) xperiod(2000(1)2012) figure
+
+synth_runner lnincwage ind occ educ classwkr age health wkstat lnincwage(2000) lnincwage(2005) lnincwage(2012), trunit(26) trperiod(2013) gen_vars keep(CPS_001_Synth_Runner_Indiana_Earned Income)
+
+**Graph decomposed effect on Michigan
+use "CPS_001_Synth_Runner_Indiana_Earned Income.dta", clear
+
+**Graph Difference in Synthetic and Actual Union Density for Indiana and 26 Other Placebo States
+twoway  (line effect lead if statefip==02, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==06, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==08, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==09, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==10, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==11, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==17, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==21, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==23, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==24, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==25, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==27, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==28, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==30, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==33, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==34, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==35, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==36, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==39, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==41, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==42, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==44, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==50, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==53, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==54, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==55, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==18, lpattern(solid) lcolor("22 150 210")), ytitle("Log Earned Income") ///
+		ylabel(, labsize(vsmall) nogrid) xlab(-12(1)6,nogrid) xtitle("Time") ///
+		ti("Difference in Synthetic and Actual Log Earned Income for Indiana and 26 Placebo States") legend(order(27 "Indiana" ///
+		2 "Donor Pool") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin))
+
+**Graph Decomposed Michigan
+synth union_density ind occ educ classwkr union_density(2000) union_density(2005) union_density(2012), trunit(26) trperiod(2013) xperiod(2000(1)2013) figure
+
+synth_runner union_density ind occ educ classwkr union_density(2000) union_density(2005) union_density(2012), trunit(26) trperiod(2013) gen_vars keep(CPS_001_Synth_Runner_Michigan)
+	
+**Graph Difference in Synthetic and Actual Union Density for Michigan and 26 Other Placebo States
+
+use "CPS_001_Synth_Runner_Michigan.dta", clear
+
+twoway  (line effect lead if statefip==02, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==06, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==08, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==09, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==10, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==11, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==17, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==21, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==23, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==24, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==25, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==27, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==28, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==30, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==33, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==34, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==35, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==36, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==39, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==41, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==42, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==44, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==50, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==53, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==54, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==55, lpattern(solid) lcolor("gs11")) ///
+		(line effect lead if statefip==26, lpattern(solid) lcolor("22 150 210")), ytitle("Union Density") ///
+		ylabel(, labsize(vsmall) nogrid) xlab(-12(1)6,nogrid) xtitle("Time") ///
+		ti("Difference in Synthetic and Actual Union Density for Michigan and 26 Placebo States") legend(order(27 "Michigan" ///
+		2 "Donor Pool") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin))
+*/
+
+
+
 
 **Look up how to restart stata from certain point, potentially in IPA training
 **Look up predict graphs
@@ -1345,7 +1893,6 @@ replace treat = 0 if statefip == 27 | statefip == 17 | statefip == 29
 
 //Naive regressions
 *Generage ln(wage)
-gen lnincwage = ln(incwage)
 
 /*
 reg lnincwage union_revised
@@ -1407,8 +1954,94 @@ replace treat = 0 if
 	statefip == 27 |
 	;
 # delimit cr 
+twoway (line effect lead if statefip==26, lcolor("22 150 210")) ///
+		(line effect lead if statefip==01, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==02, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==04, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==05, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==06, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==08, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==09, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==10, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==11, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==12, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==13, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==15, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==16, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==17, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==18, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==19, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==20, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==21, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==22, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==23, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==24, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==25, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==26, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==27, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==28, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==29, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==30, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==31, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==32, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==33, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==34, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==35, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==36, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==37, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==38, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==39, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==40, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==41, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==42, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==44, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==45, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==46, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==47, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==48, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==49, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==50, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==51, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==53, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==54, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==55, lpattern(solid) lcolor("gs12")) ///
+		(line effect lead if statefip==56, lpattern(solid) lcolor("gs12")), ytitle("Log Earned Income") ///
+		ylabel(, labsize(vsmall) nogrid) xlab(-6(1)4,nogrid) xtitle("Year") ///
+		ti("Difference in Synthetic and Actual Union Density for Indiana and 49 other placebo states") legend(order(1 "Control States" ///
+		2 "Michigan") position(6)) xline(-.5, lpattern(solid) lcolor(red) lwidth(vthin)))
 
-*/
+twoway line 
+
+local plotline1 "line effect lead if statefip==26, lcolor("22 150 210")"
+
+foreach i in 01	02	04	05	06	08	09	10	11	12	13	15	16	17	18	19	20	///
+21	22	23	24	25	26	27	28	29	30	31	32	33	34	35	36	37	38	39	40	///
+41	42	44	45	46	47	48	49	50	51	53	54	55	56 {
+	local plotline1 "`plotline1' line effect lead if statefip==26, lcolor("22 150 210")" 
+	}
+	else {
+	local plotline2 "`plotline2' line effect lead if statefip==`i', lpattern(solid) lcolor("gs12")"
+	}
+
+twoway `plotline1' `plotline2' 
+	
+	forv i = 1/150 {
+	if `i' < 76 {
+		local plotline1  "`plotline1' line x t if id == `i',
+lc(black)  || "
+	}
+	else {
+		local plotline2  "`plotline2' line x t if id == `i',
+lc(blue) || "
+	}
+}
+ twoway `plotline1' `plotline2' , legend(order(1 "Group 1" 76 "Group 2"))
+
+
+
+twoway (`plotline1') ///
+		(`plotline2')
+		*/
 
 
 
